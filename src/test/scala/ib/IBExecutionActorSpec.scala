@@ -87,7 +87,7 @@ with WordSpecLike with Matchers with BeforeAndAfterAll {
 
 
   def generateExecution(contract: IBContract, side: String, cumQty: Int, qty: Int, price: Double, avgPrice: Double) = {
-    val execution = IBExecution(1,1,"",LocalDateTime.now(),"",side,price,cumQty,qty,avgPrice)
+    val execution = IBExecution(1,"service1",1,"",LocalDateTime.now(),"",side,price,cumQty,qty,avgPrice)
     IBExecutionEvent(1,contract,execution)
   }
 

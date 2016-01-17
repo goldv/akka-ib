@@ -46,7 +46,7 @@ class IBHandler extends Actor{
       session.subscribeMarketData( contract)
       session.subscribeOrderStatus()
       session.subscribePositionEvents()
-      session.sendOrder("order1",contract, IBOrder().withOrderType(Market).withAction(Sell).withTotalQuantity(40002).withLimitPrice(1.07))
+      //session.sendOrder("order1",contract, IBOrder().withOrderType(Market).withAction(Sell).withTotalQuantity(40002).withLimitPrice(1.07))
   }
 
   def connected: Actor.Receive = {

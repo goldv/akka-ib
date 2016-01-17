@@ -1,25 +1,23 @@
 package ib.order
 
-import akka.actor.{Props, ActorRef}
+import akka.actor.{Actor, ActorRef, Props}
 import akka.event.Logging
-import akka.persistence.{RecoveryCompleted, PersistentActor}
+import akka.persistence.RecoveryCompleted
 import ib.IBSessionActor.PlaceOrder
 import ib.order.IBOrderActor.{IBOrderRequest, IBOrderStatus}
-import ib.order.IBOrderExecutionActor.{IBOrderStatusEvent, RequestSent, RequestSend}
+import ib.order.IBOrderExecutionActor.{IBOrderStatusEvent, RequestSend, RequestSent}
 import k2.SubscribableDataSource.PublishableEvent
 
-class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessionActor: ActorRef) extends PersistentActor{
+class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessionActor: ActorRef) extends Actor{
 
   val log = Logging.getLogger(context.system, this)
-
-  override def persistenceId = s"ib-order-${request.orderId}"
 
   var orderStatus: Option[IBOrderStatus] = None
 
   var requestSent = false
 
-  def receiveCommand = {
-    case RequestSend => persist(RequestSent){ _ =>
+  def receive = {
+    case RequestSend => {
       if(!requestSent){
         requestSent = true
         sessionActor ! PlaceOrder(request.orderId,request.serviceName,request.contract, request.order)
@@ -27,20 +25,9 @@ class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessi
     }
 
     case status: IBOrderStatus => if(!orderStatus.contains(status)){
-      persist(status){state =>
-        updateState(status)
-        dataSource ! PublishableEvent(topic(status), IBOrderStatusEvent(request.correlationId,status) )
-      }
+      updateState(status)
+      dataSource ! PublishableEvent(topic(status), IBOrderStatusEvent(request.correlationId,status) )
     }
-  }
-
-  def receiveRecover = {
-    case RecoveryCompleted =>
-      orderStatus.foreach(status => dataSource ! PublishableEvent(topic(status), IBOrderStatusEvent(request.correlationId,status) ))
-
-    case status: IBOrderStatus => updateState(status)
-
-    case RequestSent => requestSent = true
   }
 
   def updateState(status: IBOrderStatus) = {

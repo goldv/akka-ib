@@ -10,6 +10,7 @@ object `package`{
 }
 
 case class IBExecution(orderId: Int,
+                      orderRef: String,
                       clientId: Int,
                       execId: String,
                       time: LocalDateTime,

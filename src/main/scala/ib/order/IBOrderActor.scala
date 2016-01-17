@@ -2,40 +2,27 @@ package ib.order
 
 import akka.actor.{Actor, ActorRef, Terminated}
 import akka.event.Logging
-import akka.persistence.{PersistentActor, SnapshotOffer}
 import ib.IBContract
-import ib.execution.IBExecutionEvent
-import ib.order.IBOrderActor.{IBOrderRequest, IBOrderServiceMappingRequest, IBOrderServiceMappingResponse, IBOrderStatus}
+import ib.order.IBOrderActor.{IBOrderRequest, IBOrderStatus}
 import ib.order.IBOrderExecutionActor.RequestSend
 
-class IBOrderActor(sessionActor: ActorRef, dataSource: ActorRef) extends PersistentActor{
+class IBOrderActor(sessionActor: ActorRef, dataSource: ActorRef) extends Actor{
 
   val log = Logging.getLogger(context.system, this)
-
-  override def persistenceId = "ib-order-service"
 
   var orderState = OrderBookState(Map.empty, Map.empty)
 
   var reconciledOpenOrders: Set[Int] = Set.empty
 
-  def receiveCommand: Actor.Receive = {
+  def receive: Actor.Receive = {
     case status:IBOrderStatus =>
       log.info(s"status $status")
       orderState.getExecutor(status.orderId).foreach(_ ! status)
 
-    case request:IBOrderRequest => persist(request)(handleOrderRequest)
-
-    case IBOrderServiceMappingRequest(e) => orderState.getServiceName(e.execution.orderId).foreach( s => sender() ! IBOrderServiceMappingResponse(e,s))
+    case request:IBOrderRequest => handleOrderRequest(request)
 
     case Terminated(executionActor) =>
       orderState = orderState.removeExecutor(executionActor)
-      saveSnapshot(orderState.getRequests)
-  }
-
-  def receiveRecover = {
-    case SnapshotOffer(_, snapshot: Set[IBOrderRequest]) => orderState = snapshot.foldLeft(OrderBookState.empty)(updateState)
-
-    case request:IBOrderRequest => handleOrderRequest(request)
   }
 
   def handleOrderRequest(request:IBOrderRequest) = {
@@ -54,9 +41,6 @@ object IBOrderActor{
   case class IBOrderRequest(correlationId: String, serviceName: String, orderId: Int, contract:IBContract, order: IBOrder)
   case class IBOrderStatus(orderId: Int, status: String, filled: Int, remaining: Int, avgFillPrice: Double, permId: Int, parentId: Int, lastFillPrice: Double, clientId: Int, whyHeld: String)
   case class IBOpenOrder(orderId: Int, contract: IBContract, order: IBOrder, status: String)
-
-  case class IBOrderServiceMappingRequest(execution: IBExecutionEvent)
-  case class IBOrderServiceMappingResponse(execution: IBExecutionEvent, service: String)
 }
 
 case class OrderBookState(orders: Map[Int,(ActorRef,IBOrderRequest)], ordersReverse: Map[ActorRef, Int]){

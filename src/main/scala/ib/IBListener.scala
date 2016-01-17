@@ -57,7 +57,11 @@ class IBListener(orderHandler: ActorRef,
   *********************************** EXECUTIONS ************************************************
    */
   override def execDetails(reqId: Int, contract: Contract, execution: Execution): Unit = {
+
+
+
     val exec = IBExecution(execution.m_orderId,
+      execution.m_orderRef,
       execution.m_clientId,
       execution.m_execId,
       LocalDateTime.parse(execution.m_time, ib.execution.format),

@@ -28,8 +28,9 @@ case class IBOrder(totalQuantity: Option[Int] = None,
   def withAuxPrice(auxPrice: Double) = this.copy(auxPrice = Some(auxPrice))
   def withGoodTilDate(goodTilDate: ZonedDateTime) = this.copy(goodTilDate = Some(goodTilDate))
 
-  def toOrder = {
+  def toOrder(orderRef: String) = {
     val order = new Order
+    order.m_orderRef = orderRef
     totalQuantity.foreach(order.m_totalQuantity = _)
     action.foreach(a => order.m_action = a.value)
     orderType.foreach(ot => order.m_orderType = ot.value)

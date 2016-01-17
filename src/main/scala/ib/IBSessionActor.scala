@@ -6,7 +6,7 @@ import akka.actor._
 import akka.event.Logging
 import akka.pattern.{ask, pipe}
 import akka.util.Timeout
-import com.ib.client.{EClientSocket, TagValue}
+import com.ib.client.{ExecutionFilter, EClientSocket, TagValue}
 import ib.IBSessionActor._
 import ib.execution.IBExecutionActor
 import ib.marketdata.IBMarketDataActor
@@ -100,7 +100,8 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
 
   def placeOrder(order: PlaceOrder) = Future{
     log.info(s"sending order: $order")
-    eClientSocket.placeOrder(order.orderId, order.contract.toContract, order.order.toOrder)
+    val orderRef = s"${order.service}.${order.orderId}"
+    eClientSocket.placeOrder(order.orderId, order.contract.toContract, order.order.toOrder(orderRef) )
   }.recover{
     case err =>
       log.error(err, s"error placing order $order")
@@ -125,6 +126,7 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
   }
 
   def requestExecutions() = Future{
+    eClientSocket.reqExecutions(1,new ExecutionFilter())
     eClientSocket.reqPositions()
     eClientSocket.reqAccountUpdates(true,"DU15211")
   }.recover{

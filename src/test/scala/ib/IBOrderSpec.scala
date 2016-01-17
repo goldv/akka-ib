@@ -1,16 +1,13 @@
 package ib
 
-import java.time.LocalDateTime
-
 import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit, TestProbe}
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import ib.IBSessionActor.PlaceOrder
-import ib.execution.{IBExecutionEvent, IBExecution}
-import ib.order.IBOrderActor.{IBOrderServiceMappingResponse, IBOrderServiceMappingRequest, IBOrderRequest, IBOrderStatus}
+import ib.order.IBOrderActor.{IBOrderRequest, IBOrderStatus}
 import ib.order.IBOrderExecutionActor.IBOrderStatusEvent
 import ib.order.{IBOrder, IBOrderActor}
 import k2.SubscribableDataSource.PublishableEvent
+import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 class IBOrderSpec(_system: ActorSystem) extends TestKit(_system) with ImplicitSender
   with WordSpecLike with Matchers with BeforeAndAfterAll {
@@ -67,27 +64,6 @@ class IBOrderSpec(_system: ActorSystem) extends TestKit(_system) with ImplicitSe
       orderActor ! status
 
       source.expectNoMsg()
-    }
-    "retrieve service mapping" in{
-      val session = TestProbe()
-      val source = TestProbe()
-
-      val orderActor = system.actorOf(Props(new IBOrderActor(session.ref, source.ref)))
-
-      orderActor ! IBOrderRequest("TEST", "service1", 3,IBContract().withConId(0), IBOrder().withTotalQuantity(10))
-
-      session.expectMsg(PlaceOrder(3, "service1",IBContract().withConId(0), IBOrder().withTotalQuantity(10)))
-
-      val e1 = IBExecutionEvent(0,null,IBExecution(3, 0,"",LocalDateTime.now(),"","",0,0,0,0))
-      orderActor ! IBOrderServiceMappingRequest(e1)
-
-      expectMsg(IBOrderServiceMappingResponse(e1, "service1"))
-
-      val e2 = IBExecutionEvent(0,null,IBExecution(10, 0,"",LocalDateTime.now(),"","",0,0,0,0))
-      orderActor ! IBOrderServiceMappingRequest(e2)
-
-      expectNoMsg()
-
     }
   }
 }
