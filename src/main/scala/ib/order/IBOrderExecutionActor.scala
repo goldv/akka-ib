@@ -1,22 +1,25 @@
 package ib.order
 
-import akka.actor.{Actor, ActorRef, Props}
+import akka.actor.{Props, ActorRef}
 import akka.event.Logging
+import akka.persistence.{RecoveryCompleted, PersistentActor}
 import ib.IBSessionActor.PlaceOrder
 import ib.order.IBOrderActor.{IBOrderRequest, IBOrderStatus}
-import ib.order.IBOrderExecutionActor.{IBOrderStatusEvent, RequestSend}
+import ib.order.IBOrderExecutionActor.{IBOrderStatusEvent, RequestSent, RequestSend}
 import k2.SubscribableDataSource.PublishableEvent
 
-class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessionActor: ActorRef) extends Actor{
+class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessionActor: ActorRef) extends PersistentActor{
 
   val log = Logging.getLogger(context.system, this)
+
+  override def persistenceId = s"ib-order-${request.orderId}"
 
   var orderStatus: Option[IBOrderStatus] = None
 
   var requestSent = false
 
-  def receive = {
-    case RequestSend => {
+  def receiveCommand = {
+    case RequestSend => persist(RequestSent){ _ =>
       if(!requestSent){
         requestSent = true
         sessionActor ! PlaceOrder(request.orderId,request.serviceName,request.contract, request.order)
@@ -24,9 +27,20 @@ class IBOrderExecutionActor(request: IBOrderRequest, dataSource: ActorRef, sessi
     }
 
     case status: IBOrderStatus => if(!orderStatus.contains(status)){
+      persist(status){state =>
         updateState(status)
         dataSource ! PublishableEvent(topic(status), IBOrderStatusEvent(request.correlationId,status) )
+      }
     }
+  }
+
+  def receiveRecover = {
+    case RecoveryCompleted =>
+      orderStatus.foreach(status => dataSource ! PublishableEvent(topic(status), IBOrderStatusEvent(request.correlationId,status) ))
+
+    case status: IBOrderStatus => updateState(status)
+
+    case RequestSent => requestSent = true
   }
 
   def updateState(status: IBOrderStatus) = {

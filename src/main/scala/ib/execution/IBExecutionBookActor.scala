@@ -1,18 +1,26 @@
 package ib.execution
 
-import akka.actor.{Actor, ActorRef}
+import akka.actor.{ActorRef, Actor}
 import akka.event.Logging
+import akka.persistence.{RecoveryCompleted, PersistentActor}
 import ib.IBContract
 import k2.SubscribableDataSource.PublishableEvent
 
-class IBExecutionBookActor(service: String, executionDataSource: ActorRef) extends Actor{
+class IBExecutionBookActor(service: String, executionDataSource: ActorRef) extends PersistentActor{
+
+  override def persistenceId = s"execution-book-$service"
 
   val log = Logging.getLogger(context.system, this)
 
   var position: Map[IBContract, IBPosition] = Map.empty
 
-  def receive: Actor.Receive = {
-    case e:IBExecutionEvent => handleExecutionEvent(e)
+  def receiveCommand: Actor.Receive = {
+    case e:IBExecutionEvent => persist(e)(handleExecutionEvent)
+  }
+
+  def receiveRecover: Actor.Receive = {
+    case e:IBExecutionEvent => updatePosition(e)
+    case RecoveryCompleted => position.foreach{ case (_, p) => executionDataSource ! PublishableEvent(s"position/$service", p) }
   }
 
   def handleExecutionEvent(e: IBExecutionEvent) = executionDataSource ! PublishableEvent(topic(e), updatePosition(e))

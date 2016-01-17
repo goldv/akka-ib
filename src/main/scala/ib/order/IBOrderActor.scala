@@ -2,29 +2,40 @@ package ib.order
 
 import akka.actor.{Actor, ActorRef, Terminated}
 import akka.event.Logging
+import akka.persistence.{PersistentActor, SnapshotOffer}
 import ib.IBContract
 import ib.execution.IBExecutionEvent
 import ib.order.IBOrderActor.{IBOrderRequest, IBOrderServiceMappingRequest, IBOrderServiceMappingResponse, IBOrderStatus}
 import ib.order.IBOrderExecutionActor.RequestSend
 
-class IBOrderActor(sessionActor: ActorRef, dataSource: ActorRef) extends Actor{
+class IBOrderActor(sessionActor: ActorRef, dataSource: ActorRef) extends PersistentActor{
 
   val log = Logging.getLogger(context.system, this)
+
+  override def persistenceId = "ib-order-service"
 
   var orderState = OrderBookState(Map.empty, Map.empty)
 
   var reconciledOpenOrders: Set[Int] = Set.empty
 
-  def receive: Actor.Receive = {
+  def receiveCommand: Actor.Receive = {
     case status:IBOrderStatus =>
       log.info(s"status $status")
       orderState.getExecutor(status.orderId).foreach(_ ! status)
 
-    case request:IBOrderRequest => handleOrderRequest(request)
+    case request:IBOrderRequest => persist(request)(handleOrderRequest)
 
     case IBOrderServiceMappingRequest(e) => orderState.getServiceName(e.execution.orderId).foreach( s => sender() ! IBOrderServiceMappingResponse(e,s))
 
-    case Terminated(executionActor) => orderState = orderState.removeExecutor(executionActor)
+    case Terminated(executionActor) =>
+      orderState = orderState.removeExecutor(executionActor)
+      saveSnapshot(orderState.getRequests)
+  }
+
+  def receiveRecover = {
+    case SnapshotOffer(_, snapshot: Set[IBOrderRequest]) => orderState = snapshot.foldLeft(OrderBookState.empty)(updateState)
+
+    case request:IBOrderRequest => handleOrderRequest(request)
   }
 
   def handleOrderRequest(request:IBOrderRequest) = {
