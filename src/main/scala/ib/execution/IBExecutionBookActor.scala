@@ -4,6 +4,7 @@ import akka.actor.{ActorRef, Actor}
 import akka.event.Logging
 import akka.persistence.{RecoveryCompleted, PersistentActor}
 import ib.IBContract
+import ib.execution.IBExecutionActor.{PositionResponse, PositionRequest}
 import k2.SubscribableDataSource.PublishableEvent
 
 class IBExecutionBookActor(service: String, executionDataSource: ActorRef) extends PersistentActor{
@@ -16,14 +17,15 @@ class IBExecutionBookActor(service: String, executionDataSource: ActorRef) exten
 
   def receiveCommand: Actor.Receive = {
     case e:IBExecutionEvent => persist(e)(handleExecutionEvent)
+    case pr:PositionRequest => sender() ! PositionResponse(position.values.toSeq)
   }
 
   def receiveRecover: Actor.Receive = {
     case e:IBExecutionEvent => updatePosition(e)
-    case RecoveryCompleted => position.foreach{ case (_, p) => executionDataSource ! PublishableEvent(s"position/$service", p) }
+    case RecoveryCompleted => position.foreach{ case (c, p) => executionDataSource ! PublishableEvent(topic(c), p) }
   }
 
-  def handleExecutionEvent(e: IBExecutionEvent) = executionDataSource ! PublishableEvent(topic(e), updatePosition(e))
+  def handleExecutionEvent(e: IBExecutionEvent) = executionDataSource ! PublishableEvent(topic(e.contract), updatePosition(e))
 
   def updatePosition(e: IBExecutionEvent) = {
     val positionUpdate = position.get(e.contract).map(_.update(e)).getOrElse(IBPosition(e))
@@ -31,7 +33,7 @@ class IBExecutionBookActor(service: String, executionDataSource: ActorRef) exten
     positionUpdate
   }
 
-  def topic(s: IBExecutionEvent) = s"position/$service"
+  def topic(contract: IBContract) = s"position/$service/${contract.conId.getOrElse(-1)}"
 }
 
 case class IBPosition(contract:IBContract, position: Int, cost: Double, realizedPNL: Double){

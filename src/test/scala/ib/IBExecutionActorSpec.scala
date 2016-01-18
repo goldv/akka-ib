@@ -32,7 +32,7 @@ with WordSpecLike with Matchers with BeforeAndAfterAll {
 
       executor ! event
 
-      source.expectMsg(PublishableEvent("position/test1",  IBPosition(contract1, -2, -3, 0)))
+      source.expectMsg(PublishableEvent("position/test1/1",  IBPosition(contract1, -2, -3, 0)))
     }
     "publish position update for single buy execution" in{
       val source = TestProbe()
@@ -42,7 +42,7 @@ with WordSpecLike with Matchers with BeforeAndAfterAll {
 
       executor ! event
 
-      source.expectMsg(PublishableEvent("position/test2",  IBPosition(contract2, 2, 3, 0)))
+      source.expectMsg(PublishableEvent("position/test2/2",  IBPosition(contract2, 2, 3, 0)))
     }
 
     "publish position update for multiple buy execution" in{
@@ -51,15 +51,15 @@ with WordSpecLike with Matchers with BeforeAndAfterAll {
 
       val event = generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5)
       executor ! event
-      source.expectMsg(PublishableEvent("position/test3",  IBPosition(contract3, 2, 3, 0)))
+      source.expectMsg(PublishableEvent("position/test3/3",  IBPosition(contract3, 2, 3, 0)))
 
       val event1 = generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5)
       executor ! event1
-      source.expectMsg(PublishableEvent("position/test3",  IBPosition(contract3, 4, 6, 0)))
+      source.expectMsg(PublishableEvent("position/test3/3",  IBPosition(contract3, 4, 6, 0)))
 
       val event2 = generateExecution(contract3,"SLD", 2, 2, 1.5, 1.5)
       executor ! event2
-      source.expectMsg(PublishableEvent("position/test3",  IBPosition(contract3, 2, 3, 0)))
+      source.expectMsg(PublishableEvent("position/test3/3",  IBPosition(contract3, 2, 3, 0)))
     }
     "publish current position after re-start" in{
       val source = TestProbe()
@@ -67,16 +67,16 @@ with WordSpecLike with Matchers with BeforeAndAfterAll {
 
       val event = generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5)
       executor ! event
-      source.expectMsg(PublishableEvent("position/test4",  IBPosition(contract3, 2, 3, 0)))
+      source.expectMsg(PublishableEvent("position/test4/3",  IBPosition(contract3, 2, 3, 0)))
 
       val event1 = generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5)
       executor ! event1
-      source.expectMsg(PublishableEvent("position/test4",  IBPosition(contract3, 4, 6, 0)))
+      source.expectMsg(PublishableEvent("position/test4/3",  IBPosition(contract3, 4, 6, 0)))
 
       system.stop(executor)
 
       system.actorOf(Props(new IBExecutionBookActor("test4", source.ref)))
-      source.expectMsg(PublishableEvent("position/test4",  IBPosition(contract3, 4, 6, 0)))
+      source.expectMsg(PublishableEvent("position/test4/3",  IBPosition(contract3, 4, 6, 0)))
     }
     "calculate realized pnl for multiple executions" in{
       val execs = generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5) :: generateExecution(contract3,"BOT", 2, 2, 1.5, 1.5) :: generateExecution(contract3,"SLD", 2, 2, 1.6, 1.6) :: Nil

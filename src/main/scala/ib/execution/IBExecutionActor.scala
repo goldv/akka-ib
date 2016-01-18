@@ -2,6 +2,7 @@ package ib.execution
 
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.Logging
+import ib.execution.IBExecutionActor.PositionRequest
 
 class IBExecutionActor(orderActor: ActorRef, executionDataSource: ActorRef) extends Actor{
 
@@ -13,6 +14,7 @@ class IBExecutionActor(orderActor: ActorRef, executionDataSource: ActorRef) exte
 
   def receive = {
     case e:IBExecutionEvent => handleExecution(e)
+    case pr: PositionRequest => books.get(pr.service).foreach( _ forward pr)
   }
 
   def handleExecution(e:IBExecutionEvent) = {
@@ -46,5 +48,8 @@ class IBExecutionActor(orderActor: ActorRef, executionDataSource: ActorRef) exte
 object IBExecutionActor{
 
   def apply(orderActor: ActorRef, executionDataSource: ActorRef) = Props(new IBExecutionActor(orderActor, executionDataSource))
+
+  case class PositionRequest(service: String)
+  case class PositionResponse(positions: Seq[IBPosition])
 
 }

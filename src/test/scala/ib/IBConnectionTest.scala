@@ -1,6 +1,9 @@
 package ib
 
 import akka.actor.{Actor, ActorSystem, Props}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.server.Directives._
+import akka.stream.{Materializer, ActorMaterializer}
 import akka.util.Timeout
 import ib.IBSessionActor.{IBConnected, IBDisconnected, IBError}
 import ib.execution.IBPosition
@@ -9,12 +12,16 @@ import ib.marketdata.IBMarketDataActor.IBMarketDataPrice
 import ib.order.IBOrder
 import ib.order.IBOrder.{Market, Sell}
 import ib.order.IBOrderExecutionActor.IBOrderStatusEvent
+import ib.rest.IBHttpService
 
+import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration._
 
 object IBConnectionTest extends App{
 
   implicit val system = ActorSystem("ib-test")
+  implicit val ec = system.dispatcher
+  implicit val to = Timeout(3 seconds)
 
   val handler = system.actorOf(Props[IBHandler])
 
@@ -34,6 +41,8 @@ class IBHandler extends Actor{
 
   implicit val ec = context.dispatcher
   implicit val timeout = Timeout(3 seconds)
+  implicit val sys = context.system
+  implicit val materializer = ActorMaterializer()
 
   def receive = notConnected
 
@@ -46,7 +55,13 @@ class IBHandler extends Actor{
       session.subscribeMarketData( contract)
       session.subscribeOrderStatus()
       session.subscribePositionEvents()
-      //session.sendOrder("order1",contract, IBOrder().withOrderType(Market).withAction(Sell).withTotalQuantity(40002).withLimitPrice(1.07))
+
+      val httpService = IBHttpService(session)
+
+
+      Http().bindAndHandle(httpService.routes, "localhost", 8080)
+
+      session.sendOrder("order1",contract, IBOrder().withOrderType(Market).withAction(Sell).withTotalQuantity(40002).withLimitPrice(1.07))
   }
 
   def connected: Actor.Receive = {

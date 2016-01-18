@@ -8,7 +8,8 @@ import akka.pattern.{ask, pipe}
 import akka.util.Timeout
 import com.ib.client.{ExecutionFilter, EClientSocket, TagValue}
 import ib.IBSessionActor._
-import ib.execution.IBExecutionActor
+import ib.execution.IBExecutionActor.{PositionResponse, PositionRequest}
+import ib.execution.{IBPosition, IBExecutionActor}
 import ib.marketdata.IBMarketDataActor
 import ib.marketdata.IBMarketDataActor.IBMarketDataSubscription
 import ib.order.IBOrderActor.IBOrderRequest
@@ -37,7 +38,10 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
   var connectionUp = false
 
   // Execution context for api calls, the whole api is synchronised at method level so single threaded makes sense here.
-  implicit val executionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
+  val executionContext = ExecutionContext.fromExecutor(Executors.newSingleThreadExecutor())
+
+  implicit val ec = context.dispatcher
+  implicit val to = Timeout(3 seconds)
 
   override def preStart = self ! Connect(host, port, clientId)
 
@@ -106,7 +110,7 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
     case err =>
       log.error(err, s"error placing order $order")
       errorEventSource ! PublishableEvent(errorTopic(order.service), IBError(s"error placing order $order") )
-  }
+  }(executionContext)
 
   def requestMarketData(rmd: RequestMarketData) = Future{
     log.info(s"SUB: ${rmd.contract.toContract}")
@@ -171,6 +175,8 @@ object IBSessionActor{
 
   case class PlaceOrder(orderId: Int, service: String, contract: IBContract, order: IBOrder)
 
+
+
   def apply(host: String, port: Int, clientId: Int = 0,sessionDataSource: ActorRef) = Props(new IBSessionActor(host, port, clientId))
 }
 
@@ -185,17 +191,22 @@ trait IBSessionHandling{ this: Actor =>
   val executionActor = context.actorOf(Props(new IBExecutionActor(orderActor, executionDataSource)))
   val errorEventSource = context.actorOf(Props(new SubscribableDataSource(None)))
 
-  def createSession(name: String, handler: ActorRef): IBSession = new IBSession{
+  def createSession(name: String, handler: ActorRef)(implicit ec: ExecutionContext, to: Timeout): IBSession = new IBSession{
+
+    def service = name
+
     def subscribeMarketData(contract: IBContract) = marketDataActor ! IBMarketDataSubscription(contract, handler)
 
-    def subscribeOrderStatus() = orderDataSource ! Subscribe(s"order-status/$name", Some(handler))
-    def unsubscribeOrderStatus() = orderDataSource ! UnSubscribe(s"order-status/$name", Some(handler))
+    def subscribeOrderStatus(_name: String = name) = orderDataSource ! Subscribe(s"order-status/${_name}", Some(handler))
+    def unsubscribeOrderStatus(_name: String = name) = orderDataSource ! UnSubscribe(s"order-status/${_name}", Some(handler))
 
     def subscribeErrorEvents() = {}
 
-    def subscribePositionEvents() = executionDataSource ! Subscribe(s"position/$name", Some(handler))
+    def subscribePositionEvents(_name: String = name) = executionDataSource ! Subscribe(s"position/${_name}", Some(handler))
 
-    def sendOrder(correlationId: String, contract: IBContract, order: IBOrder)(implicit ec: ExecutionContext, timeout: Timeout ): Future[Int] = for{
+    def getPositions(_name: String = name): Future[Seq[IBPosition]] = (executionActor ? PositionRequest(_name)).mapTo[PositionResponse].map(_.positions)
+
+    def sendOrder(correlationId: String, contract: IBContract, order: IBOrder): Future[Int] = for{
       response <- (orderIDGenerator ? OrderIdRequest).mapTo[OrderIdResponse]
     } yield {
       orderActor ! IBOrderRequest(correlationId, name, response.id, contract, order)
@@ -205,13 +216,16 @@ trait IBSessionHandling{ this: Actor =>
 }
 
 trait IBSession{
-  def subscribeMarketData(contract: IBContract): Unit
-  def subscribeOrderStatus(): Unit
+  def service: String
 
-  def unsubscribeOrderStatus(): Unit
+  def subscribeMarketData(contract: IBContract): Unit
+  def subscribeOrderStatus(_name: String = service): Unit
+
+  def unsubscribeOrderStatus(_name: String = service): Unit
   def subscribeErrorEvents(): Unit
 
-  def subscribePositionEvents(): Unit
+  def subscribePositionEvents(_name: String = service): Unit
+  def getPositions(_name: String = service): Future[Seq[IBPosition]]
 
-  def sendOrder(correlationId: String, contract: IBContract, order: IBOrder)(implicit ec: ExecutionContext, timeout: Timeout ): Future[Int]
+  def sendOrder(correlationId: String, contract: IBContract, order: IBOrder): Future[Int]
 }

@@ -52,9 +52,10 @@ class IBOrderSpec(_system: ActorSystem) extends TestKit(_system) with ImplicitSe
       val session = TestProbe()
       val source = TestProbe()
 
-      println(s"source: ${source.ref}")
-
       val orderActor = system.actorOf(Props(new IBOrderActor(session.ref, source.ref)))
+
+      orderActor ! IBOrderRequest("TEST","service1", 0, IBContract().withConId(0), IBOrder().withTotalQuantity(10))
+      session.expectMsg(PlaceOrder(0,"service1", IBContract().withConId(0), IBOrder().withTotalQuantity(10)))
 
       val status = IBOrderStatus(0, "TEST", 0, 5, 10, 0, 0, 1.0, 1, "")
       orderActor ! status
