@@ -8,11 +8,7 @@ import ib.execution.IBPosition
 import ib.{IBContract, IBSession}
 import spray.json._
 
-
-
-import scala.concurrent.{Future, ExecutionContextExecutor, ExecutionContext}
-
-case class Test(id: String)
+import scala.concurrent.{ExecutionContextExecutor, Future}
 
 object Protocols extends SprayJsonSupport with DefaultJsonProtocol{
 
@@ -28,8 +24,7 @@ object Protocols extends SprayJsonSupport with DefaultJsonProtocol{
     }
   }
 
-  implicit val ibPositionFormat = jsonFormat4(IBPosition.apply)
-  //implicit val tformat = jsonFormat1(Test)
+  implicit val ibPositionFormat = jsonFormat5(IBPosition.apply)
 
 }
 
@@ -41,15 +36,16 @@ trait IBHttpService {
   implicit def executor: ExecutionContextExecutor
   implicit val materializer: Materializer
 
-
   def session: IBSession
+
+  def services: Set[String]
 
   val routes = logRequestResult("akka-http-microservice") {
 
     pathPrefix("position") {
       get{
         complete{
-          session.getPositions().map(_.toArray)
+          Future.sequence(services.map(session.getPositions)).map(_.flatten).map(_.toArray)
         }
       }
     }
@@ -58,7 +54,8 @@ trait IBHttpService {
 }
 
 object IBHttpService{
-  def apply(_session: IBSession)(implicit _system:ActorSystem, _executor: ExecutionContextExecutor, _materializer: Materializer) = new IBHttpService {
+  def apply(_session: IBSession, _services: Set[String])(implicit _system:ActorSystem, _executor: ExecutionContextExecutor, _materializer: Materializer) = new IBHttpService {
+    override def services = _services
     override def session: IBSession = _session
     override implicit def executor: ExecutionContextExecutor = _executor
     override implicit val materializer: Materializer = _materializer

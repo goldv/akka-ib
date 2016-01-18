@@ -6,22 +6,22 @@ import akka.actor._
 import akka.event.Logging
 import akka.pattern.{ask, pipe}
 import akka.util.Timeout
-import com.ib.client.{ExecutionFilter, EClientSocket, TagValue}
+import com.ib.client.{EClientSocket, ExecutionFilter, TagValue}
 import ib.IBSessionActor._
-import ib.execution.IBExecutionActor.{PositionResponse, PositionRequest}
-import ib.execution.{IBPosition, IBExecutionActor}
+import ib.execution.IBExecutionActor.{PositionRequest, PositionResponse}
+import ib.execution.{IBExecutionActor, IBPosition}
 import ib.marketdata.IBMarketDataActor
 import ib.marketdata.IBMarketDataActor.IBMarketDataSubscription
 import ib.order.IBOrderActor.IBOrderRequest
-import ib.order.IBOrderIdGenerator.{OrderIdResponse, OrderIdRequest}
-import ib.order.{IBOrderIdGenerator, IBOrderActor, IBOrder}
+import ib.order.IBOrderIdGenerator.{OrderIdRequest, OrderIdResponse}
+import ib.order.{IBOrder, IBOrderActor, IBOrderIdGenerator}
 import ib.reference.IBReferenceDataActor
 import k2.SubscribableDataSource
 import k2.SubscribableDataSource.{PublishableEvent, Subscribe, UnSubscribe}
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.collection.JavaConverters._
 
 class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with IBSessionHandling{
 
@@ -57,7 +57,7 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
       context.become(connected orElse session)
       connectionUp = true
       log.info(s"IB connection established for host: $host port: $port client: $clientId")
-      subscribers.foreach{ case (subscriber, name) => subscriber ! IBConnected(createSession(name, subscriber)) }
+      subscribers.foreach{ case (subscriber, name) => subscriber ! IBConnected }
 
     case c @ Connected(false, Some(err)) =>
       log.error(s"IB Connection lost $err attempt re-connect in $RECONNECT_TIMEOUT seconds")
@@ -89,8 +89,11 @@ class IBSessionActor(host: String, port: Int, clientId: Int) extends Actor with 
       updateSubscribers(s)
 
       context.watch(s.subscriber)
+
+      s.subscriber ! createSession(s.name,s.subscriber)
+
       if(connectionUp){
-        s.subscriber ! IBConnected(createSession(s.name,s.subscriber))
+        s.subscriber ! IBConnected
       }
 
     case Terminated(subscriber) =>
@@ -164,7 +167,7 @@ object IBSessionActor{
   case class Connected(isConnected: Boolean, reason: Option[String])
 
   // broadcasted session events
-  case class IBConnected(session: IBSession)
+  case object IBConnected
   case class IBDisconnected(reason: String)
 
   case class IBError(reason: String)

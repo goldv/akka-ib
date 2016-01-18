@@ -1,20 +1,16 @@
 package ib
 
 import akka.actor.{Actor, ActorSystem, Props}
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.server.Directives._
-import akka.stream.{Materializer, ActorMaterializer}
+import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import ib.IBSessionActor.{IBConnected, IBDisconnected, IBError}
 import ib.execution.IBPosition
-import ib.marketdata.IBMarketDataActor
 import ib.marketdata.IBMarketDataActor.IBMarketDataPrice
 import ib.order.IBOrder
 import ib.order.IBOrder.{Market, Sell}
 import ib.order.IBOrderExecutionActor.IBOrderStatusEvent
-import ib.rest.IBHttpService
+import ib.rest.IBHttpActor
 
-import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration._
 
 object IBConnectionTest extends App{
@@ -24,10 +20,14 @@ object IBConnectionTest extends App{
   implicit val to = Timeout(3 seconds)
 
   val handler = system.actorOf(Props[IBHandler])
+  val handler2 = system.actorOf(Props[IBHandler])
+  val html5 = system.actorOf(IBHttpActor(Set("service1", "service2")))
 
   val connection = IBConnection("localhost", 4001)
 
   connection.session(handler, "service1")
+  connection.session(handler2, "service2")
+  connection.session(html5, "html5")
 
   Thread.sleep(2000)
 }
@@ -47,19 +47,14 @@ class IBHandler extends Actor{
   def receive = notConnected
 
   def notConnected: Actor.Receive = {
-    case IBConnected(s) =>
+    case s: IBSession => session = s
+    case IBConnected =>
       println(s"IB connected")
-      session = s
       context.become(connected)
 
       session.subscribeMarketData( contract)
       session.subscribeOrderStatus()
       session.subscribePositionEvents()
-
-      val httpService = IBHttpService(session)
-
-
-      Http().bindAndHandle(httpService.routes, "localhost", 8080)
 
       session.sendOrder("order1",contract, IBOrder().withOrderType(Market).withAction(Sell).withTotalQuantity(40002).withLimitPrice(1.07))
   }

@@ -28,7 +28,7 @@ class IBExecutionBookActor(service: String, executionDataSource: ActorRef) exten
   def handleExecutionEvent(e: IBExecutionEvent) = executionDataSource ! PublishableEvent(topic(e.contract), updatePosition(e))
 
   def updatePosition(e: IBExecutionEvent) = {
-    val positionUpdate = position.get(e.contract).map(_.update(e)).getOrElse(IBPosition(e))
+    val positionUpdate = position.get(e.contract).map(_.update(e)).getOrElse(IBPosition(e, service))
     position = position.updated(e.contract, positionUpdate)
     positionUpdate
   }
@@ -36,7 +36,7 @@ class IBExecutionBookActor(service: String, executionDataSource: ActorRef) exten
   def topic(contract: IBContract) = s"position/$service/${contract.conId.getOrElse(-1)}"
 }
 
-case class IBPosition(contract:IBContract, position: Int, cost: Double, realizedPNL: Double){
+case class IBPosition(service: String, contract:IBContract, position: Int, cost: Double, realizedPNL: Double){
 
   def update(execution: IBExecutionEvent) = {
     val fillQty = IBPosition.getQuantity(execution)
@@ -64,5 +64,5 @@ object IBPosition{
     case "SLD" => -execution.execution.shares
   }
 
-  def apply(e: IBExecutionEvent): IBPosition = IBPosition(e.contract,0, 0, 0).update(e)
+  def apply(e: IBExecutionEvent, service: String): IBPosition = IBPosition(service,e.contract,0, 0, 0).update(e)
 }
